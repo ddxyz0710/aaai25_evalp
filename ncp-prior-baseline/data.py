@@ -1,4 +1,4 @@
-# author: enijkamp@ucla.edu
+
 
 import os
 import pickle

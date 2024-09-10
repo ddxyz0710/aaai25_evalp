@@ -41,31 +41,30 @@ def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument('--mode', default='train', help='training mode')
     parser.add_argument('--datetime', required=True, help='datetime')
-    parser.add_argument('--fid_dataset', default='celeba64_val_10k',  help='SVHN|cifar10 | celeba64 | lsun | imagenet | folder | lfw | fake')
-    parser.add_argument('--dataroot', default='./data/celeba/', help='path to dataset')
+    # parser.add_argument('--datetime', type=str, default='debug_'+datetime.datetime.now().strftime('%Y-%m-%d-%H-%M-%S'), help='datetime')
+
+    parser.add_argument('--fid_dataset', default='cifar10',  help='SVHN|cifar10 | celeba64 | lsun | imagenet | folder | lfw | fake')
+    parser.add_argument('--dataroot', default='./data/cifar/', help='path to dataset')
     parser.add_argument('--fid_dir', default='./fid_dir', help='path to fid')
     parser.add_argument('--workers', type=int, help='number of data loading workers', default=1)
     parser.add_argument('--data_to_0_1', type=bool, default=True, help='Load data in [0, 1] range')
-    parser.add_argument('--snis', type=bool,default=False, help='Perform SNIS')
-    parser.add_argument('--generate', type=bool,default=False, help='Perform generation')
-    parser.add_argument('--nsamples', type=int,default=10000, help='No. samples to generate')
 
     parser.add_argument('--batchSize', type=int, default=100, help='input batch size')
-    parser.add_argument('--imageSize', type=int, default=64, help='the height / width of the input image to network')
-    parser.add_argument('--niter', type=int, default=70, help='no of epochs')
+    parser.add_argument('--imageSize', type=int, default=32, help='the height / width of the input image to network')
+    parser.add_argument('--niter', type=int, default=100, help='no of epochs')
     parser.add_argument('--log_fid_with_smpls', type=int, default=2000, help='no of samples for FID calculation in intermediate epochs')
     parser.add_argument('--num_last_epoch_fid_samples', type=int, default=10000, help='no of smaples for FID in the last epoch')
 
     parser.add_argument('--exp_name', type=str, default="STD-VAE", help='name of exp')
     parser.add_argument('--recon_loss_type', type=str, default='l2', help='Type of reocn loss')
     parser.add_argument('--spec_norm_on_dec_only', type=bool, default=False)
-    parser.add_argument('--model_name', type=str, default='CELEBA_WAE_PAPER_MAN_EMB_SZIE', help='model name')
+    parser.add_argument('--model_name', type=str, default='CIFAR_SEED', help='model name')
     parser.add_argument('--kernel_size', type=int, default=None, help='no of epochs')
     parser.add_argument('--num_filters', type=int, default=128, help='no of conv filters for encoder & decoder')
-    parser.add_argument('--bottleneck_factor', type=int, default=64, help='latent embedding size')
+    parser.add_argument('--bottleneck_factor', type=int, default=128, help='latent embedding size')
     parser.add_argument('--gen_reg_type', type=str, default='l2', help='no of epochs')
     parser.add_argument('--gen_reg_weight', type=float, default=1e-7, help='no of epochs')
-    parser.add_argument('--embedding_weight', type=float, default=0.05024, help='weight of embedding loss')
+    parser.add_argument('--embedding_weight', type=float, default=0.007, help='weight of embedding loss')
     parser.add_argument('--cycle_emd_loss_weight', type=bool, default=False, help='no of epochs')
     parser.add_argument('--include_batch_norm', type=bool, default=True, help='include batch norm in encoder and decoder')
     parser.add_argument('--n_components', type=int, default=10, help='no of componnets for Gaussian mixture for ex-post density estimation')
@@ -87,14 +86,14 @@ def parse_args():
 
     parser.add_argument('--visIter', default=1, type=int, help='number of epochs we need to visualize')
     parser.add_argument('--plotIter', default=1, type=int, help='number of epochs we need to visualize')
-    parser.add_argument('--fidIter', default=100, type=int,  help='number of epochs we need to evaluate')
+    parser.add_argument('--fidIter', default=5, type=int,  help='number of epochs we need to evaluate')
     parser.add_argument('--saveIter', default=10, type=int, help='number of epochs we need to save the model')
     parser.add_argument('--diagIter', default=1, type=int, help='number of epochs we need to save the model')
     parser.add_argument('--n_printout', default=20, type=int, help='number of iters we need to print the stats')
 
     parser.add_argument('--outf', default='', help='folder to output images and model checkpoints')
     parser.add_argument('--manualSeed', default=42, type=int, help='42 is the answer to everything')
-    parser.add_argument('--gpu', type=int, default=0, metavar='S', help='gpu id (default: 0)')
+    parser.add_argument('--gpu', type=int, default=1, metavar='S', help='gpu id (default: 0)')
     parser.add_argument('--cuda', action='store_true', default=True, help='enables cuda')
 
     opt = parser.parse_args()
@@ -195,17 +194,29 @@ def get_dataset(opt):
 ################################### AUROC ##############################
 def get_cifar_dataset(opt):
 
-    dataset = IgnoreLabelDataset(datasets.CIFAR10(root='data/cifar/', train=True,
-                                                  transform=transforms.Compose([
-                                                      transforms.Resize(opt.imageSize),
-                                                      transforms.ToTensor(),
-                                                      transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
-                                                  ])))
+    class CIFAR10NoLabels(datasets.CIFAR10):
+        def __getitem__(self, index):
+            img, _ = super(CIFAR10NoLabels, self).__getitem__(index)
+            return img
 
-    dataloader = torch.utils.data.DataLoader(dataset, batch_size=opt.batchSize,
-                                             shuffle=True, num_workers=int(opt.workers))
 
-    return dataloader, dataset
+    transform = transforms.Compose([
+        transforms.Resize(opt.imageSize),  # Resize images to desired size
+        transforms.ToTensor(),             # Convert PIL images to tensors
+        # transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))  # Normalize images
+    ])
+
+    # CIFAR-10 dataset
+    train_dataset = CIFAR10NoLabels(root='./vae-baseline/data//mycifar10', train=True, download=True, transform=transform)
+    test_dataset = CIFAR10NoLabels(root='./vae-baseline/data/mycifar10', train=False, download=True, transform=transform)
+
+    # Create dataloaders
+    train_dataloader = torch.utils.data.DataLoader(train_dataset, batch_size=opt.batchSize,
+                                                  shuffle=True, num_workers=int(opt.workers))
+    test_dataloader = torch.utils.data.DataLoader(test_dataset, batch_size=opt.batchSize,
+                                                 shuffle=False, num_workers=int(opt.workers))
+
+    return train_dataloader, train_dataset, test_dataloader
 
 def get_ood_dataset(opt, cifar_dataset):
     length = len(cifar_dataset)
@@ -271,10 +282,11 @@ def weights_init(m):
         m.weight.data.fill_(1)
         m.bias.data.fill_(0)
 
+
 class Decoder(nn.Module):
     def __init__(self, opt):
         super(Decoder, self).__init__()
-        self.input_dim = (3, 64, 64)
+        self.input_dim = (3, 32, 32)
         self.latent_dim = opt.bottleneck_factor
         self.n_channels = 3
         self.bn_mom = 0.01
@@ -286,7 +298,7 @@ class Decoder(nn.Module):
 
         layers.append(
             nn.Sequential(
-                nn.ConvTranspose2d(1024, 512, 5, 2, padding=2, output_padding=1, bias=False),
+                nn.ConvTranspose2d(1024, 512, 4, 2, padding=2, output_padding=1, bias=False),
                 nn.BatchNorm2d(512, momentum=self.bn_mom, eps=self.bn_eps),
                 nn.ReLU(),
             )
@@ -294,7 +306,7 @@ class Decoder(nn.Module):
 
         layers.append(
             nn.Sequential(
-                nn.ConvTranspose2d(512, 256, 5, 2, padding=2, output_padding=1, bias=False),
+                nn.ConvTranspose2d(512, 256, 4, 2, padding=0, output_padding=1, bias=False),
                 nn.BatchNorm2d(256, momentum=self.bn_mom, eps=self.bn_eps),
                 nn.ReLU(),
             )
@@ -302,15 +314,7 @@ class Decoder(nn.Module):
 
         layers.append(
             nn.Sequential(
-                nn.ConvTranspose2d(256, 128, 5, 2, padding=2, output_padding=1, bias=False),
-                nn.BatchNorm2d(128, momentum=self.bn_mom, eps=self.bn_eps),
-                nn.ReLU(),
-            )
-        )
-        # Note: Last ConvT layer has stride=1 -->  (64, 64) to (64, 64)
-        layers.append(
-            nn.Sequential(
-                nn.ConvTranspose2d(128, self.n_channels, 5, 1, padding=2), nn.Sigmoid()
+                nn.ConvTranspose2d(256, self.n_channels, 4, 1, padding=2), nn.Sigmoid()
             )
         )  # Sigmoid at the end --> Transform the inputs to [0, 1]
 
@@ -318,7 +322,6 @@ class Decoder(nn.Module):
         self.depth = len(layers)
 
     def forward(self, z): #: torch.Tensor, output_layer_levels: List[int] = None):
-        # output = ModelOutput()
 
         max_depth = self.depth
         out = z
@@ -334,7 +337,7 @@ class Encoder(nn.Module):
     def __init__(self, opt):
         super(Encoder, self).__init__()
 
-        self.input_dim = (3, 64, 64)
+        self.input_dim = (3, 32, 32)
         self.latent_dim = opt.bottleneck_factor
         self.n_channels = 3
 
@@ -345,7 +348,7 @@ class Encoder(nn.Module):
 
         layers.append(
             nn.Sequential(
-                nn.Conv2d(self.n_channels, 128, 5, 2, padding=2),  # use kernel=5, pad=2?
+                nn.Conv2d(self.n_channels, 128, 4, 2, padding=1),  # use kernel=5, pad=2?
                 nn.BatchNorm2d(128, momentum=self.bn_mom, eps=self.bn_eps),
                 nn.ReLU(),
             )
@@ -353,21 +356,21 @@ class Encoder(nn.Module):
 
         layers.append(
             nn.Sequential(
-                nn.Conv2d(128, 256, 5, 2, padding=2), nn.BatchNorm2d(256, momentum=self.bn_mom, eps=self.bn_eps), 
+                nn.Conv2d(128, 256, 4, 2, padding=1), nn.BatchNorm2d(256, momentum=self.bn_mom, eps=self.bn_eps), 
                 nn.ReLU()
             )
         )
 
         layers.append(
             nn.Sequential(
-                nn.Conv2d(256, 512, 5, 2, padding=2), nn.BatchNorm2d(512, momentum=self.bn_mom, eps=self.bn_eps), 
+                nn.Conv2d(256, 512, 4, 2, padding=1), nn.BatchNorm2d(512, momentum=self.bn_mom, eps=self.bn_eps), 
                 nn.ReLU()
             )
         )
 
         layers.append(
             nn.Sequential(
-                nn.Conv2d(512, 1024, 5, 2, padding=2), nn.BatchNorm2d(1024, momentum=self.bn_mom, eps=self.bn_eps), 
+                nn.Conv2d(512, 1024, 4, 2, padding=1), nn.BatchNorm2d(1024, momentum=self.bn_mom, eps=self.bn_eps), 
                 nn.ReLU()
             )
         )
@@ -375,13 +378,15 @@ class Encoder(nn.Module):
         self.layers = layers
         self.depth = len(layers)
 
-        self.embedding = nn.Linear(1024 * 4 * 4, opt.bottleneck_factor)
-        self.log_sigma = nn.Linear(1024 * 4 * 4, opt.bottleneck_factor)
+        self.embedding = nn.Linear(1024 * 2 * 2, opt.bottleneck_factor)
+        self.log_sigma = nn.Linear(1024 * 2 * 2, opt.bottleneck_factor)
         self.tanh = nn.Tanh()
 
     # def forward(self, x: torch.Tensor, output_layer_levels: List[int] = None):
     def forward(self, x):
         # output = ModelOutput() 
+
+        # x = 2 * x - 1
 
         max_depth = self.depth
 
@@ -393,7 +398,8 @@ class Encoder(nn.Module):
         log_sigma = 5 * self.tanh(self.log_sigma(out.reshape(x.shape[0], -1)))
         # log_sigma = self.log_sigma(out.reshape(x.shape[0], -1))
         return mu, log_sigma
-    
+
+
 class _netE(nn.Module):
     def __init__(self, args):
         super().__init__()
@@ -440,7 +446,7 @@ def compute_fid_from_datalaoder(sample_dataloader, ref_dataloader,
     m = torch.from_numpy(m).cuda()
     s = torch.from_numpy(s).cuda()
     # take average across gpus
-    distributed=False  #! Warning: Need to handle this for large dataset
+    distributed=False  
     utils.average_tensor(m, distributed)
     utils.average_tensor(s, distributed)
 
@@ -500,9 +506,6 @@ def train(opt, output_dir):
         return nll.squeeze()
     
     def loss_kl_divergence(mu, log_sigma):
-    # def kl_loss(y_true, y_pred):
-        # Don't panic about the - sign. It has been pushed though into the barcket
-        # kl = 0.5 * K.sum(K.exp(2*log_sigma) + K.square(mu) - 1. - 2*log_sigma, axis=1)
         # kl = 0.5 * torch.sum(torch.exp(2*log_sigma) + torch.square(mu) - 1. - 2*log_sigma, axis=1) # This line has bug since, log_sigma is actually log_var
         kl = 0.5 * torch.sum(torch.exp(log_sigma) + torch.square(mu) - 1. - log_sigma, dim=1)
         return kl
@@ -594,7 +597,8 @@ def train(opt, output_dir):
     def train_flag():
         netG.train()
         netI.train()
-        # netE.train() 
+        # netE.train()
+
     def create_generator_vae(netG, batch_size, num_total_samples):
         '''
         netG: generator/decoder of vae
@@ -709,7 +713,7 @@ def train(opt, output_dir):
     nz = int(opt.bottleneck_factor)
     nc = 3
 
-    dataloader, dataset_full, test_dataloader = get_dataset(opt)
+    dataloader, dataset_full, test_dataloader = get_cifar_dataset(opt)
 
     input = torch.FloatTensor(opt.batchSize, 3, opt.imageSize, opt.imageSize)
     noise = torch.FloatTensor(opt.batchSize, nz)
@@ -728,7 +732,7 @@ def train(opt, output_dir):
     # netG.apply(weights_init)
     if opt.cuda:
         netG.cuda()
-
+    
     optimizerG = torch.optim.Adam(netG.parameters(), lr=opt.lrG, weight_decay=0, betas=(0.9, 0.999))
     if opt.netG != '':
         ckpt = torch.load(opt.netG)
@@ -797,6 +801,7 @@ def train(opt, output_dir):
     stat_1 = {k[0]:[] for k in stats_headings}
     stat_1['lrE'] = []
 
+
     fid = 0.0
     best_fid = 1e5
     best_recon_fid = 1e5
@@ -850,7 +855,7 @@ def train(opt, output_dir):
             #shuffle
             inputs, labels = inputs[idxs], labels[idxs]
             outputs = netE(inputs).squeeze() # 2B, 1
-            # errE = nn.BCELoss(reduction='sum')(outputs.squeeze(), labels) / (2 * batch_size)
+
             errE = bce_loss(outputs, labels) / (2 * batch_size)
             
             errE.backward()
@@ -866,13 +871,13 @@ def train(opt, output_dir):
                         errE.data.item(),
                         netEpNorm.data.item(), netEgradNorm.data.item(), 
                         ))
+                
 
             stats_values['err(E)'] += errE.data.item() / num_batch
             # stats_values['err(E)'] += 0
             
             stats_values['norm(grad(E))'] += netEgradNorm.data.item() / num_batch
             stats_values['norm(weight(E))'] += netEpNorm.data.item() / num_batch
-
 
                 
             global_step += 1
@@ -902,16 +907,17 @@ def train(opt, output_dir):
             stat_1_i.append(epoch+1)
             stat_1['err(E)'].append(stats_values['err(E)'])
             stat_1['norm(grad(E))'].append(stats_values['norm(grad(E))']) #netIgradNorm.data.item())
-            # stat_1['norm(grad(E))'].append(netEgradNorm.data.item())
             stat_1['norm(weight(E))'].append(stats_values['norm(weight(E))']) #netIpNorm.data.item())
+
             stat_1['lrE'].append(last_lrE)
-            # stat_1['auroc'].append(auroc)
+
 
             plot_stats()
 
         torch.cuda.empty_cache()
         # end of epoch
-
+    
+    # best_mse, fid_gen_at_fid, fid_recon_at_fid = eval_model(opt, model_type='bestfid')
     res_str3 = "Best BCE Model: Epoch={}, Loss={:.4f}".format(best_epoch, best_err)
     out_f.write(res_str3+"\n")
     out_f.flush()
@@ -947,6 +953,9 @@ def evaluate(opt, output_dir):
     netG.load_state_dict(ckpt['model_state'])
     print(netG)
 
+    K = 5000
+    NUM_FID_SAMPLES = opt.num_last_epoch_fid_samples
+
     netE = _netE(opt)
     # netE.apply(weights_init)
     if opt.cuda:
@@ -955,114 +964,49 @@ def evaluate(opt, output_dir):
     ckpt = torch.load(opt.netE)
     netE.load_state_dict(ckpt['model_state'])
     print(netE)
-    netG.eval()
-    netE.eval()
 
-    if opt.snis:
-        # ------------------------------------
-        # SNIS
-        #------------------------------------
-        steps = 5
-        nums = {}
-        # Ks = [100,  2500, 5000]
-        Ks = [100, 500, 1000, 1500,2000,2500,3000,3500,4000,4500,5000]
-        for i in range(len(Ks)): nums[str(Ks[i])] = []
-        NUM_FID_SAMPLES = opt.num_last_epoch_fid_samples
-        out_f = open("%s/eval_results.txt" % output_dir, 'w')
-
-        for step in range(7):
-        # K = 5000
-
-            for K in Ks:
-                snis = NIS(K, [opt.bottleneck_factor], 
-                            netE,
-                            energy_hidden_sizes=None,
-                            proposal=None,
-                            data_mean=None,
-                            reparameterize_proposal_samples=False,
-                            dtype=torch.float,
-                            )
-                sampled_zs = []
-                for i in range(NUM_FID_SAMPLES): 
-                    sampled_zs.append(snis.sample(num_samples=1).detach().cpu()) # num_samples=1 is hard coded inside SNIS
-                print("sampled {} latent vectors from NCP prior".format(len(sampled_zs)))
-                # make dataset and loader
-                from data import ImageListDataset
-                genset = ImageListDataset(sampled_zs)
-                genloader = torch.utils.data.DataLoader(genset, batch_size=100,
-                                                        shuffle=False, num_workers=int(opt.workers))
-                img_generator = image_generator_from_latent_loader(netG, genloader, 100, NUM_FID_SAMPLES)
-                
-                fid = compute_fid_from_datalaoder(img_generator, 
-                                                    None, opt.fid_dataset, 
-                                                    opt.fid_dir, 
-                                                    batchSize=100, 
-                                                    total_fid_samples=NUM_FID_SAMPLES)
-                
-                nums[str(K)].append(fid)
-                res_str = "Eval Results: FID = {:.3f} with n_proposals = {}".format(fid, K)
-                print(res_str)
-                out_f.write(res_str+"\n")
-        
-        for key in nums.keys():
-            mean_fid = np.array(nums[key]).mean()
-            res_str = "Eval Avg Results: FID = {:.3f} with n_proposals = {}".format(mean_fid, key)
-            out_f.write(res_str+"\n")
-        out_f.flush()
-
+    snis = NIS(K, [opt.bottleneck_factor], 
+                netE,
+                energy_hidden_sizes=None,
+                proposal=None,
+                data_mean=None,
+                reparameterize_proposal_samples=False,
+                dtype=torch.float,
+                )
+    sampled_zs = []
+    for i in range(NUM_FID_SAMPLES): 
+        sampled_zs.append(snis.sample(num_samples=1).detach().cpu()) # num_samples=1 is hard coded inside SNIS
+    print("sampled {} latent vectors from NCP prior".format(len(sampled_zs)))
+    # make dataset and loader
+    from data import ImageListDataset
+    genset = ImageListDataset(sampled_zs)
+    genloader = torch.utils.data.DataLoader(genset, batch_size=100,
+                                            shuffle=False, num_workers=int(opt.workers))
+    img_generator = image_generator_from_latent_loader(netG, genloader, 100, NUM_FID_SAMPLES)
     
+    fid = compute_fid_from_datalaoder(img_generator, 
+                                        None, opt.fid_dataset, 
+                                        opt.fid_dir, 
+                                        batchSize=100, 
+                                        total_fid_samples=NUM_FID_SAMPLES)
     
-    if opt.generate:
-        K = 500
-        save_dir = os.path.join(output_dir, 'gen_eval'+str(opt.nsamples))
-        if not os.path.exists(save_dir):
-            os.makedirs(save_dir)
-        snis = NIS(K, [opt.bottleneck_factor], 
-                            netE,
-                            energy_hidden_sizes=None,
-                            proposal=None,
-                            data_mean=None,
-                            reparameterize_proposal_samples=False,
-                            dtype=torch.float,
-                            )
-        
-        sampled_zs = []
-        for i in range(opt.nsamples): 
-            sampled_zs.append(snis.sample(num_samples=1).detach().cpu()) # num_samples=1 is hard coded inside SNIS
-        print("sampled {} latent vectors from NCP prior".format(len(sampled_zs)))
-        # make dataset and loader
-        from data import ImageListDataset
-        genset = ImageListDataset(sampled_zs)
-        genloader = torch.utils.data.DataLoader(genset, batch_size=100,
-                                                shuffle=False, num_workers=int(opt.workers))
-        cnt = 0
-        for i, data in enumerate(genloader):
-            if opt.cuda:
-                data = data.cuda()
-            data = data.squeeze(1)
-            gen_samples = netG(data)
-            for i, img in enumerate(gen_samples):
-                vutils.save_image(img, os.path.join(save_dir, f"image_{cnt}.png"))
-                cnt +=1
-        print(f"Saved {opt.nsamples} images to {save_dir}")
-
-
-
+    out_f = open("%s/eval_results.txt" % output_dir, 'w')
+    res_str = "Eval Results: FID = {:.3f} with n_proposals = {}".format(fid, K)
+    out_f.write(res_str+"\n")
+    out_f.flush()
 
 
 def main():
     opt = parse_args()
     set_global_gpu_env(opt)
-    
+    set_seed(opt)
 
     if opt.mode == 'eval':
         # if running with eval mode, take output dir from model path
-        print("Running in eval mode ...")
         output_dir = "/".join(opt.netE.split("/")[:-1])
         evaluate(opt, output_dir)
 
     else:
-        set_seed(opt)
         data_exp = os.path.splitext(os.path.basename(__file__))[0]
         exp_id = os.path.join(data_exp, opt.exp_name, opt.model_name)
         output_dir = get_output_dir(exp_id, opt)
