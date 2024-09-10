@@ -1000,7 +1000,7 @@ def main():
     opt = parse_args()
     set_global_gpu_env(opt)
     set_seed(opt)
-
+##
     if opt.mode == 'eval':
         # if running with eval mode, take output dir from model path
         output_dir = "/".join(opt.netE.split("/")[:-1])
